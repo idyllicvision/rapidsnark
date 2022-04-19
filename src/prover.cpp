@@ -14,9 +14,8 @@
 
 using json = nlohmann::json;
 
-
-int
-groth16_prover(const void *zkey_buffer,   unsigned long zkey_size,
+extern "C" __attribute__((visibility("default"))) __attribute__((used))
+int groth16_prover(const void *zkey_buffer,   unsigned long zkey_size,
                const void *wtns_buffer,   unsigned long wtns_size,
                char       *proof_buffer,  unsigned long proof_size,
                char       *public_buffer, unsigned long public_size,

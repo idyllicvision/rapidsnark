@@ -16,7 +16,7 @@ extern "C" {
  *         PPROVER_ERROR - in case of an error.
  */
 
-int
+extern int
 groth16_prover(const void *zkey_buffer,   unsigned long zkey_size,
                const void *wtns_buffer,   unsigned long wtns_size,
                char       *proof_buffer,  unsigned long proof_size,
