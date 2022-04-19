@@ -84,10 +84,10 @@ int groth16_prover(const void *zkey_buffer,   unsigned long zkey_size,
         if (error_msg) {
             strncpy(error_msg, e.what(), error_msg_maxsize);
         }
-        return PPROVER_ERROR;
+        return PROVER_ERROR;
     }
 
     mpz_clear(altBbn128r);
 
-    return PRPOVER_OK;
+    return PROVER_OK;
 }

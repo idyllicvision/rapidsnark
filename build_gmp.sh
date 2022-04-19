@@ -2,11 +2,12 @@
 
 usage()
 {
-    echo "USAGE: $0 <android|ios|host>"
+    echo "USAGE: $0 <android|android_x86_64|ios|host>"
     echo "where"
-    echo "    android: build for Android arm64"
-    echo "    ios:     build for iOS arm64"
-    echo "    host:    build for this host"
+    echo "    android:        build for Android arm64"
+    echo "    android_x86_64: build for Android x86_64"
+    echo "    ios:            build for iOS arm64"
+    echo "    host:           build for this host"
 
     exit 1
 }
@@ -133,7 +134,6 @@ build_android_x86_64()
     mkdir "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    #../configure --host $TARGET --prefix="$PACKAGE_DIR" --disable-shared --with-pic --enable-static --disable-fft &&
     ../configure --host $TARGET --prefix="$PACKAGE_DIR" --with-pic --disable-fft &&
     make -j$(nproc) &&
     make install
@@ -172,7 +172,7 @@ build_ios()
     mkdir "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    ../configure --host $TARGET --prefix="$PACKAGE_DIR" --disable-shared --disable-fft --disable-assembly &&
+    ../configure --host $TARGET --prefix="$PACKAGE_DIR" --with-pic --disable-fft --disable-assembly &&
     make -j$(nproc) &&
     make install
 
