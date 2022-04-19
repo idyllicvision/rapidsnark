@@ -11,7 +11,7 @@
 //#define TEST_FQ_C_FUNCTIONS
 //#define TEST_FQ_ASM_FUNCTIONS
 
-#ifdef TEST_FR_C_FUNCTIONS`
+#ifdef TEST_FR_C_FUNCTIONS
 #include "fr.hpp"
 #endif
 

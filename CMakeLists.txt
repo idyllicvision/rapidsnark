@@ -38,6 +38,14 @@ if(USE_OPENMP)
 endif()
 
 
+if(TARGET_PLATFORM MATCHES "android")
+    set(USE_ASM FALSE)
+
+elseif(TARGET_PLATFORM MATCHES "ios")
+    set(USE_ASM FALSE)
+
+endif()
+
 add_subdirectory(src)
 
 
