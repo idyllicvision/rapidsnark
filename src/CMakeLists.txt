@@ -64,6 +64,10 @@ else()
     set(FQ_SOURCES ${FQ_SOURCES} ../build/fq_raw_generic.cpp ../build/fq_generic.cpp)
 endif()
 
+if(USE_PIC)
+    add_compile_options(-fPIC)
+endif()
+
 add_library(fq STATIC ${FQ_SOURCES})
 set_target_properties(fq PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

@@ -4,6 +4,7 @@ include(cmake/platform.cmake)
 
 set(USE_ASM    ON CACHE BOOL "Use asm implementation for Fr and Fq")
 set(USE_OPENMP ON CACHE BOOL "Use OpenMP")
+set(USE_PIC    ON CACHE BOOL "Use PIC compile option")
 
 project(rapidsnark LANGUAGES CXX ASM)
 
@@ -12,6 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 message("USE_ASM=" ${USE_ASM})
 message("USE_OPENMP=" ${USE_OPENMP})
+message("USE_PIC=" ${USE_PIC})
 message("CMAKE_CROSSCOMPILING=" ${CMAKE_CROSSCOMPILING})
 
 message("GMP_PREFIX=" ${GMP_PREFIX})
