@@ -1,6 +1,8 @@
+#include "groth16.hpp"
 #include "random_generator.hpp"
 #include "logging.hpp"
 #include "misc.hpp"
+#include "prover_cache.h"
 #include <sstream>
 #include <vector>
 #include <mutex>
@@ -47,41 +49,11 @@ std::unique_ptr<Prover<Engine>> makeProver(
 }
 
 template <typename Engine>
-std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement *wtns) {
-
+void Prover<Engine>::computeCoefs(typename Engine::FrElement *a, typename Engine::FrElement *wtns)
+{
     ThreadPool &threadPool = ThreadPool::defaultPool();
 
-    LOG_TRACE("Start Multiexp A");
-    uint32_t sW = sizeof(wtns[0]);
-    typename Engine::G1Point pi_a;
-    E.g1.multiMulByScalarMSM(pi_a, pointsA, (uint8_t *)wtns, sW, nVars);
-    std::ostringstream ss2;
-    ss2 << "pi_a: " << E.g1.toString(pi_a);
-    LOG_DEBUG(ss2);
-
-    LOG_TRACE("Start Multiexp B1");
-    typename Engine::G1Point pib1;
-    E.g1.multiMulByScalarMSM(pib1, pointsB1, (uint8_t *)wtns, sW, nVars);
-    std::ostringstream ss3;
-    ss3 << "pib1: " << E.g1.toString(pib1);
-    LOG_DEBUG(ss3);
-
-    LOG_TRACE("Start Multiexp B2");
-    typename Engine::G2Point pi_b;
-    E.g2.multiMulByScalarMSM(pi_b, pointsB2, (uint8_t *)wtns, sW, nVars);
-    std::ostringstream ss4;
-    ss4 << "pi_b: " << E.g2.toString(pi_b);
-    LOG_DEBUG(ss4);
-
-    LOG_TRACE("Start Multiexp C");
-    typename Engine::G1Point pi_c;
-    E.g1.multiMulByScalarMSM(pi_c, pointsC, (uint8_t *)((uint64_t)wtns + (nPublic +1)*sW), sW, nVars-nPublic-1);
-    std::ostringstream ss5;
-    ss5 << "pi_c: " << E.g1.toString(pi_c);
-    LOG_DEBUG(ss5);
-
     LOG_TRACE("Start Initializing a b c A");
-    auto a = new typename Engine::FrElement[domainSize];
     auto b = new typename Engine::FrElement[domainSize];
     auto c = new typename Engine::FrElement[domainSize];
 
@@ -206,15 +178,168 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement 
 
     delete [] b;
     delete [] c;
+}
 
-    LOG_TRACE("Start Multiexp H");
+template <typename Engine>
+template <typename Curve>
+void Prover<Engine>::computeMsm(Curve                       &g,
+                                typename Curve::Point       &result,
+                                typename Curve::PointAffine *bases,
+                                typename Engine::FrElement  *scalars,
+                                u_int32_t                    nPoints,
+                                const std::string           &pointName,
+                                const std::string           &varName)
+{
+    LOG_TRACE("Start Multiexp " + pointName);
+
+    g.multiMulByScalarMSM(result, bases, (uint8_t *)scalars, sizeof(scalars[0]), nPoints);
+
+    LOG_DEBUG(varName + ": " + g.toString(result));
+}
+
+template <typename Engine>
+void diffScalars(Engine                                  &E,
+                 std::vector<typename Engine::FrElement> &diffScalars,
+                 const typename Engine::FrElement        *scalars1,
+                 const typename Engine::FrElement        *scalars2,
+                 u_int32_t                                nPoints)
+{
+    for (int i = 0; i < nPoints; i++) {
+        typename Engine::FrElement scalar;
+
+        const int cmp = E.fr.cmp(scalars1[i], scalars2[i]);
+
+        if (cmp == 0) {
+            continue;
+
+        } else if (cmp < 0) {
+            E.fr.sub(scalar, scalars1[i], scalars2[i]);
+
+        } else if (cmp > 0) {
+            E.fr.sub(scalar, scalars2[i], scalars1[i]);
+        }
+
+        diffScalars.push_back(scalar);
+    }
+}
+
+template <typename Engine, typename Curve>
+void diffPoints(Engine                                   &E,
+                Curve                                    &g,
+                std::vector<typename Curve::PointAffine> &diffPoints,
+                typename Curve::PointAffine              *points,
+                const typename Engine::FrElement         *scalars1,
+                const typename Engine::FrElement         *scalars2,
+                u_int32_t                                 nPoints)
+{
+    for (int i = 0; i < nPoints; i++) {
+        const int cmp = E.fr.cmp(scalars1[i], scalars2[i]);
+
+        if (cmp == 0) {
+            continue;
+
+        } else if (cmp < 0) {
+            typename Curve::PointAffine point;
+            g.neg(point, points[i]);
+
+            diffPoints.push_back(point);
+
+        } else if (cmp > 0) {
+            diffPoints.push_back(points[i]);
+        }
+    }
+}
+
+template <typename Engine>
+void Prover<Engine>::computeH(typename Engine::G1Point &pih, typename Engine::FrElement *wtns)
+{
+    std::vector<typename Engine::FrElement> a(domainSize);
+
+    computeCoefs(a.data(), wtns);
+    computeMsm(E.g1, pih, pointsH, a.data(), domainSize,  "H",  "pih");
+}
+
+template <typename Engine>
+std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement *wtns, ProverCache &cache)
+{
+    typename Engine::G1Point pi_a;
+    typename Engine::G1Point pib1;
+    typename Engine::G2Point pi_b;
+    typename Engine::G1Point pi_c;
     typename Engine::G1Point pih;
-    E.g1.multiMulByScalarMSM(pih, pointsH, (uint8_t *)a, sizeof(a[0]), domainSize);
-    std::ostringstream ss1;
-    ss1 << "pih: " << E.g1.toString(pih);
-    LOG_DEBUG(ss1);
 
-    delete [] a;
+    computeH(pih, wtns);
+
+    const u_int32_t nPointsA  = nVars;
+    const u_int32_t nPointsB1 = nVars;
+    const u_int32_t nPointsB2 = nVars;
+    const u_int32_t nPointsC  = nVars-nPublic-1;
+
+    auto *scalars  = wtns;
+    auto *scalarsC = &wtns[nPublic+1];
+
+    if (cache.isValid(nVars)) {
+        LOG_TRACE("Compute A B1 B2 C with cache");
+
+        auto cachedScalars = cache.getWitness();
+        auto cachedScalarsC = &cachedScalars[nPublic+1];
+
+        auto cachedA  = cache.getPointA();
+        auto cachedB1 = cache.getPointB1();
+        auto cachedB2 = cache.getPointB2();
+        auto cachedC  = cache.getPointC();
+
+        std::vector<typename Engine::FrElement> deltaScalars;
+        std::vector<typename Engine::FrElement> deltaScalarsC;
+
+        deltaScalars.reserve(nPointsA / 10);
+        deltaScalarsC.reserve(nPointsC / 10);
+
+        diffScalars(E, deltaScalars,  scalars,  cachedScalars,  nPointsA);
+        diffScalars(E, deltaScalarsC, scalarsC, cachedScalarsC, nPointsC);
+
+        std::vector<typename Engine::G1PointAffine> deltaPointsA;
+        std::vector<typename Engine::G1PointAffine> deltaPointsB1;
+        std::vector<typename Engine::G2PointAffine> deltaPointsB2;
+        std::vector<typename Engine::G1PointAffine> deltaPointsC;
+
+        deltaPointsA.reserve(deltaScalars.size());
+        deltaPointsB1.reserve(deltaScalars.size());
+        deltaPointsB2.reserve(deltaScalars.size());
+        deltaPointsC.reserve(deltaScalarsC.size());
+
+        diffPoints(E, E.g1, deltaPointsA,  pointsA,  cachedScalars, scalars, nPointsA);
+        diffPoints(E, E.g1, deltaPointsB1, pointsB1, cachedScalars, scalars, nPointsB1);
+        diffPoints(E, E.g2, deltaPointsB2, pointsB2, cachedScalars, scalars, nPointsB2);
+        diffPoints(E, E.g1, deltaPointsC,  pointsC,  cachedScalarsC, scalarsC, nPointsC);
+
+        computeMsm(E.g1, pi_a, deltaPointsA.data(),  deltaScalars.data(),  deltaPointsA.size(),  "A",  "pi_a");
+        computeMsm(E.g1, pib1, deltaPointsB1.data(), deltaScalars.data(),  deltaPointsB1.size(), "B1", "pib1");
+        computeMsm(E.g2, pi_b, deltaPointsB2.data(), deltaScalars.data(),  deltaPointsB2.size(), "B2", "pi_b");
+        computeMsm(E.g1, pi_c, deltaPointsC.data(),  deltaScalarsC.data(), deltaPointsC.size(),  "C",  "pi_c");
+
+        E.g1.add(pi_a, pi_a, *cachedA);
+        E.g1.add(pib1, pib1, *cachedB1);
+        E.g2.add(pi_b, pi_b, *cachedB2);
+        E.g1.add(pi_c, pi_c, *cachedC);
+
+        LOG_TRACE("Computed A B1 B2 C");
+        LOG_DEBUG("pi_a: " + E.g1.toString(pi_a));
+        LOG_DEBUG("pib1: " + E.g1.toString(pib1));
+        LOG_DEBUG("pi_b: " + E.g2.toString(pi_b));
+        LOG_DEBUG("pi_c: " + E.g1.toString(pi_c));
+
+    } else {
+        LOG_TRACE("Compute A B1 B2 C without cache");
+
+        computeMsm(E.g1, pi_a, pointsA,  scalars,  nPointsA,  "A",  "pi_a");
+        computeMsm(E.g1, pib1, pointsB1, scalars,  nPointsB1, "B1", "pib1");
+        computeMsm(E.g2, pi_b, pointsB2, scalars,  nPointsB2, "B2", "pi_b");
+        computeMsm(E.g1, pi_c, pointsC,  scalarsC, nPointsC,  "C",  "pi_c");
+
+        LOG_TRACE("Store wtns A B1 B2 C to cache");
+        cache.store(wtns, nVars, &pi_a, &pib1, &pi_b, &pi_c);
+    }
 
     typename Engine::FrElement r;
     typename Engine::FrElement s;

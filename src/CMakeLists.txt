@@ -1,6 +1,6 @@
 link_libraries(${GMP_LIB})
 
-add_definitions(${GMP_DEFINIONS})
+add_compile_definitions(${GMP_DEFINIONS})
 
 if(USE_ASM)
     if(ARCH MATCHES "arm64")
@@ -159,6 +159,5 @@ if(OpenMP_CXX_FOUND)
     endif()
 
 endif()
-
 
 add_executable(test_prover test_prover.cpp)

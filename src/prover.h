@@ -57,6 +57,7 @@ groth16_prover_create(
     void                **prover_object,
     const void          *zkey_buffer,
     unsigned long long   zkey_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize);
 
@@ -70,6 +71,7 @@ int
 groth16_prover_create_zkey_file(
     void                **prover_object,
     const char          *zkey_file_path,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize);
 
@@ -129,6 +131,7 @@ groth16_prover(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize);
 
@@ -149,6 +152,7 @@ groth16_prover_zkey_file(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize);
 
