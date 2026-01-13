@@ -162,3 +162,20 @@ endif()
 
 
 add_executable(test_prover test_prover.cpp)
+
+# GLV BN254 tests
+if(BUILD_TESTS)
+    add_executable(em_test em_test.cpp)
+
+    target_link_libraries(em_test PRIVATE rapidsnarkStaticFrFq)
+
+    target_include_directories(em_test PRIVATE /opt/homebrew/include)
+    target_link_libraries(em_test PRIVATE
+            /opt/homebrew/lib/libgtest_main.a
+            /opt/homebrew/lib/libgtest.a
+    )
+
+    add_test(NAME em_test COMMAND em_test)
+
+    install(TARGETS em_test RUNTIME DESTINATION bin)
+endif()
