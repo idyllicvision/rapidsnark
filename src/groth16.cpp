@@ -250,6 +250,45 @@ void diffPoints(Engine                                   &E,
     }
 }
 
+template <typename Engine, typename Curve, typename BaseField>
+static bool shouldUseCacheMsm(Curve                             &g,
+                              const typename Engine::FrElement  *fullScalars,
+                              uint32_t                           fullCount,
+                              const typename Engine::FrElement  *deltaScalars,
+                              uint32_t                           deltaCount)
+{
+    if (deltaCount == 0) return true;
+    if (fullCount == 0) return false;
+
+    MSM<Curve, BaseField> msm(g);
+
+    auto fullCost = msm.estimateCost(
+        (uint8_t*)fullScalars,
+        sizeof(typename Engine::FrElement),
+        fullCount
+    );
+
+    auto deltaCost = msm.estimateCost(
+        (uint8_t*)deltaScalars,
+        sizeof(typename Engine::FrElement),
+        deltaCount
+    );
+
+    const uint64_t fullOps =
+        fullCost.nonZeroSlices +
+        fullCost.bucketReduceAdds +
+        fullCost.chunkMergeAdds +
+        fullCost.chunkMergeDbls;
+
+    const uint64_t deltaOps =
+        deltaCost.nonZeroSlices +
+        deltaCost.bucketReduceAdds +
+        deltaCost.chunkMergeAdds +
+        deltaCost.chunkMergeDbls;
+
+    return deltaOps < fullOps;
+}
+
 template <typename Engine>
 void Prover<Engine>::computeH(typename Engine::G1Point &pih, typename Engine::FrElement *wtns)
 {
@@ -313,15 +352,43 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement 
         diffPoints(E, E.g2, deltaPointsB2, pointsB2, cachedScalars, scalars, nPointsB2);
         diffPoints(E, E.g1, deltaPointsC,  pointsC,  cachedScalarsC, scalarsC, nPointsC);
 
-        computeMsm(E.g1, pi_a, deltaPointsA.data(),  deltaScalars.data(),  deltaPointsA.size(),  "A",  "pi_a");
-        computeMsm(E.g1, pib1, deltaPointsB1.data(), deltaScalars.data(),  deltaPointsB1.size(), "B1", "pib1");
-        computeMsm(E.g2, pi_b, deltaPointsB2.data(), deltaScalars.data(),  deltaPointsB2.size(), "B2", "pi_b");
-        computeMsm(E.g1, pi_c, deltaPointsC.data(),  deltaScalarsC.data(), deltaPointsC.size(),  "C",  "pi_c");
+    const bool useCacheABC = shouldUseCacheMsm<Engine, typename Engine::G1, typename Engine::F1>(
+        E.g1,
+        scalars,
+        nPointsA,
+        deltaScalars.data(),
+        (uint32_t)deltaScalars.size()
+    );
+
+    const bool useCacheC = shouldUseCacheMsm<Engine, typename Engine::G1, typename Engine::F1>(
+        E.g1,
+        scalarsC,
+        nPointsC,
+        deltaScalarsC.data(),
+        (uint32_t)deltaScalarsC.size()
+    );
+
+    if (useCacheABC) {
+        computeMsm(E.g1, pi_a,  deltaPointsA.data(),  deltaScalars.data(), deltaPointsA.size(),  "A",  "pi_a");
+        computeMsm(E.g1, pib1,  deltaPointsB1.data(), deltaScalars.data(), deltaPointsB1.size(), "B1", "pib1");
+        computeMsm(E.g2, pi_b,  deltaPointsB2.data(), deltaScalars.data(), deltaPointsB2.size(), "B2", "pi_b");
 
         E.g1.add(pi_a, pi_a, *cachedA);
         E.g1.add(pib1, pib1, *cachedB1);
         E.g2.add(pi_b, pi_b, *cachedB2);
+
+    } else {
+        computeMsm(E.g1, pi_a, pointsA,  scalars, nPointsA,  "A",  "pi_a");
+        computeMsm(E.g1, pib1, pointsB1, scalars, nPointsB1, "B1", "pib1");
+        computeMsm(E.g2, pi_b, pointsB2, scalars, nPointsB2, "B2", "pi_b");
+    }
+
+    if (useCacheC) {
+        computeMsm(E.g1, pi_c, deltaPointsC.data(), deltaScalarsC.data(), deltaPointsC.size(), "C", "pi_c");
         E.g1.add(pi_c, pi_c, *cachedC);
+    } else {
+        computeMsm(E.g1, pi_c, pointsC, scalarsC, nPointsC, "C", "pi_c");
+    }
 
         LOG_TRACE("Computed A B1 B2 C");
         LOG_DEBUG("pi_a: " + E.g1.toString(pi_a));
