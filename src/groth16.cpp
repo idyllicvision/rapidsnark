@@ -262,29 +262,17 @@ static bool shouldUseCacheMsm(Curve                             &g,
 
     MSM<Curve, BaseField> msm(g);
 
-    auto fullCost = msm.estimateCost(
+    const uint64_t fullOps = msm.estimateCost(
         (uint8_t*)fullScalars,
         sizeof(typename Engine::FrElement),
         fullCount
     );
 
-    auto deltaCost = msm.estimateCost(
+    const uint64_t deltaOps = msm.estimateCost(
         (uint8_t*)deltaScalars,
         sizeof(typename Engine::FrElement),
         deltaCount
     );
-
-    const uint64_t fullOps =
-        fullCost.nonZeroSlices +
-        fullCost.bucketReduceAdds +
-        fullCost.chunkMergeAdds +
-        fullCost.chunkMergeDbls;
-
-    const uint64_t deltaOps =
-        deltaCost.nonZeroSlices +
-        deltaCost.bucketReduceAdds +
-        deltaCost.chunkMergeAdds +
-        deltaCost.chunkMergeDbls;
 
     return deltaOps < fullOps;
 }
