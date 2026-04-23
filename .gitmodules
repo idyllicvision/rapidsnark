@@ -7,7 +7,7 @@
 [submodule "depends/ffiasm"]
 	path = depends/ffiasm
 	url = https://github.com/idyllicvision/ffiasm.git
-	branch = master
+	branch = nogmp
 [submodule "depends/circom_runtime"]
 	path = depends/circom_runtime
 	url = https://github.com/iden3/circom_runtime.git
