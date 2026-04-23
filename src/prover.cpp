@@ -5,13 +5,13 @@
 #include <climits>
 #include <alt_bn128.hpp>
 #include <nlohmann/json.hpp>
-
 #include "prover.h"
 #include "groth16.hpp"
 #include "zkey_utils.hpp"
 #include "wtns_utils.hpp"
 #include "binfile_utils.hpp"
 #include "fileloader.hpp"
+#include "prover_cache.h"
 
 using json = nlohmann::json;
 
@@ -103,13 +103,16 @@ class Groth16Prover
     BinFileUtils::BinFile zkey;
     std::unique_ptr<ZKeyUtils::Header> zkeyHeader;
     std::unique_ptr<Groth16::Prover<AltBn128::Engine>> prover;
+    ProverCache cache;
 
 public:
     Groth16Prover(const void         *zkey_buffer,
-                  unsigned long long  zkey_size)
+                  unsigned long long  zkey_size,
+                  const char         *cache_file_path)
 
         : zkey(zkey_buffer, zkey_size, "zkey", 1),
-          zkeyHeader(ZKeyUtils::loadHeader(&zkey))
+          zkeyHeader(ZKeyUtils::loadHeader(&zkey)),
+          cache(cache_file_path)
     {
         if (!PrimeIsValid(zkeyHeader->rPrime)) {
             throw std::invalid_argument("zkey curve not supported");
@@ -155,7 +158,11 @@ public:
 
         AltBn128::FrElement *wtnsData = (AltBn128::FrElement *)wtns.getSectionData(2);
 
-        auto proof = prover->prove(wtnsData);
+        if (!cache.isLoaded()) {
+            cache.load();
+        }
+
+        auto proof = prover->prove(wtnsData, cache);
 
         stringProof = proof->toJson().dump();
         stringPublic = BuildPublicString(wtnsData, zkeyHeader->nPublic);
@@ -225,6 +232,7 @@ groth16_prover_create(
     void                **prover_object,
     const void          *zkey_buffer,
     unsigned long long   zkey_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -237,7 +245,11 @@ groth16_prover_create(
             throw std::invalid_argument("Null zkey buffer");
         }
 
-        Groth16Prover *prover = new Groth16Prover(zkey_buffer, zkey_size);
+        if (cache_file_path == NULL) {
+            cache_file_path = "";
+        }
+
+        Groth16Prover *prover = new Groth16Prover(zkey_buffer, zkey_size, cache_file_path);
 
         *prover_object = prover;
 
@@ -262,6 +274,7 @@ int
 groth16_prover_create_zkey_file(
     void                **prover_object,
     const char          *zkey_file_path,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -279,6 +292,7 @@ groth16_prover_create_zkey_file(
                 prover_object,
                 fileLoader.dataBuffer(),
                 fileLoader.dataSize(),
+                cache_file_path,
                 error_msg,
                 error_msg_maxsize);
 }
@@ -402,6 +416,7 @@ groth16_prover(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -411,6 +426,7 @@ groth16_prover(
                     &prover,
                     zkey_buffer,
                     zkey_size,
+                    cache_file_path,
                     error_msg,
                     error_msg_maxsize);
 
@@ -443,6 +459,7 @@ groth16_prover_zkey_file(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -465,6 +482,7 @@ groth16_prover_zkey_file(
             proof_size,
             public_buffer,
             public_size,
+            cache_file_path,
             error_msg,
             error_msg_maxsize);
 }

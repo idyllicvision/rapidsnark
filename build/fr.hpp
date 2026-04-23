@@ -259,6 +259,7 @@ public:
     void inline toMontgomery(Element &r, const Element &a) { Fr_rawToMontgomery(r.v, a.v); };
     void inline fromMontgomery(Element &r, const Element &a) { Fr_rawFromMontgomery(r.v, a.v); };
     int inline eq(const Element &a, const Element &b) { return Fr_rawIsEq(a.v, b.v); };
+    int inline cmp(const Element &a, const Element &b) { return mp_cmp(a.v, b.v);};
     int inline isZero(const Element &a) { return Fr_rawIsZero(a.v); };
 
     void toMP(mp_uint_t r, const Element &a);

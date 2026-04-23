@@ -296,7 +296,7 @@ void Logger::trace(const char* text) throw()
    }
 }
 
-void Logger::trace(std::string& text) throw()
+void Logger::trace(const string &text) throw()
 {
    trace(text.data());
 }
@@ -342,7 +342,7 @@ void Logger::updateLogLevel(LogLevel logLevel)
 }
 
 // Enable all log levels
-void Logger::enaleLog()
+void Logger::enableLog()
 {
    m_LogLevel = ENABLE_LOG; 
 }

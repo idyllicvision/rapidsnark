@@ -106,12 +106,12 @@ namespace CPlusPlusLogging
 
          // Interface for Trace log 
          void trace(const char* text) throw();
-         void trace(std::string& text) throw();
+         void trace(const std::string& text) throw();
          void trace(std::ostringstream& stream) throw();
 
          // Interface for Debug log 
          void debug(const char* text) throw();
-         void debug(std::string& text) throw();
+         void debug(const std::string& text) throw();
          void debug(std::ostringstream& stream) throw();
 
          // Error and Alarm log must be always enable
@@ -119,7 +119,7 @@ namespace CPlusPlusLogging
 
          // Interfaces to control log levels
          void updateLogLevel(LogLevel logLevel);
-         void enaleLog();  // Enable all log levels
+         void enableLog();  // Enable all log levels
          void disableLog(); // Disable all log levels, except error and alarm
 
          // Interfaces to control log Types

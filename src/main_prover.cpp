@@ -5,20 +5,29 @@
 #include <stdexcept>
 #include "prover.h"
 #include "fileloader.hpp"
+#include "logging.hpp"
+
+#define ENABLE_LOGGING 0
 
 int main(int argc, char **argv)
 {
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         std::cerr << "Invalid number of parameters" << std::endl;
-        std::cerr << "Usage: prover <circuit.zkey> <witness.wtns> <proof.json> <public.json>" << std::endl;
+        std::cerr << "Usage: prover <circuit.zkey> <witness.wtns> <proof.json> <public.json> [cache.dat]" << std::endl;
         return EXIT_FAILURE;
     }
 
+#if ENABLE_LOGGING
+    Logger::getInstance()->enableLog();
+    Logger::getInstance()->enableConsoleLogging();
+#endif
+
     try {
-        const std::string zkeyFilename = argv[1];
-        const std::string wtnsFilename = argv[2];
-        const std::string proofFilename = argv[3];
+        const std::string zkeyFilename   = argv[1];
+        const std::string wtnsFilename   = argv[2];
+        const std::string proofFilename  = argv[3];
         const std::string publicFilename = argv[4];
+        const char *cacheFilename = (argc == 6) ? argv[5] : nullptr;
 
         BinFileUtils::FileLoader zkeyFile(zkeyFilename);
         BinFileUtils::FileLoader wtnsFile(wtnsFilename);
@@ -53,6 +62,7 @@ int main(int argc, char **argv)
                    &proofSize,
                    publicBuffer.data(),
                    &publicSize,
+                   cacheFilename,
                    errorMsg,
                    sizeof(errorMsg));
 
