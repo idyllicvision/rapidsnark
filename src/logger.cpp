@@ -324,7 +324,7 @@ void Logger::debug(const char* text) throw()
    }
 }
 
-void Logger::debug(std::string& text) throw()
+void Logger::debug(const std::string& text) throw()
 {
    debug(text.data());
 }
