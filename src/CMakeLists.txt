@@ -159,15 +159,6 @@ if(BUILD_TESTS)
             /opt/homebrew/lib/libgtest.a
     )
     add_test(NAME mp_perf COMMAND mp_perf)
-
-    add_executable(mp_profile_nogmp ../build/mp_profile_nogmp.cpp)
-    target_link_libraries(mp_profile_nogmp PRIVATE mp)
-    target_include_directories(mp_profile_nogmp PRIVATE /opt/homebrew/include)
-    target_link_libraries(mp_profile_nogmp PRIVATE
-            /opt/homebrew/lib/libgtest_main.a
-            /opt/homebrew/lib/libgtest.a
-    )
-    add_test(NAME mp_profile_nogmp COMMAND mp_profile_nogmp)
     endif ()
 
     add_executable(test_public_size test_public_size.c)
