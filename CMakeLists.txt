@@ -35,6 +35,8 @@ endif()
 
 add_subdirectory(src)
 
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+
 install(TARGETS prover verifier rapidsnark rapidsnarkStatic rapidsnarkStaticFrFq test_prover fr fq
     RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
     BUNDLE DESTINATION ${CMAKE_INSTALL_PREFIX}/app
