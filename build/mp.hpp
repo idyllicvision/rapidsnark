@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <string>
+#include <cstring>
 
 #define MP_N64 4
 #define MP_N   32

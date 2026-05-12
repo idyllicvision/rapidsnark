@@ -55,23 +55,53 @@ void mp_set(uint64_t *r, uint64_t a) {
 void mp_copy(uint64_t *r, const uint64_t *a) {
     if (r == a) return;
 
-    int i = 0, end = MP_N64, step = 1;
+#if MP_N64 == 4
+    const uintptr_t rp = reinterpret_cast<uintptr_t>(r);
+    const uintptr_t ap = reinterpret_cast<uintptr_t>(a);
+    static constexpr uintptr_t BYTES = MP_N64 * sizeof(uint64_t);
 
-    if (r > a && r < a + MP_N64) {
-        i = MP_N64 - 1;
-        end = -1;
-        step = -1;
+    if (rp > ap && rp < ap + BYTES) {
+        r[3] = a[3];
+        r[2] = a[2];
+        r[1] = a[1];
+        r[0] = a[0];
+        return;
     }
 
-    for (; i != end; i += step) r[i] = a[i];
+    r[0] = a[0];
+    r[1] = a[1];
+    r[2] = a[2];
+    r[3] = a[3];
+#else
+    std::memmove(r, a, MP_N64 * sizeof(uint64_t));
+#endif
 }
 
 int mp_cmp(const uint64_t *a, const uint64_t *b) {
+#if MP_N64 == 4
+    uint64_t ai, bi;
+
+    ai = a[3]; bi = b[3];
+    if (ai != bi) return (ai > bi) ? 1 : -1;
+
+    ai = a[2]; bi = b[2];
+    if (ai != bi) return (ai > bi) ? 1 : -1;
+
+    ai = a[1]; bi = b[1];
+    if (ai != bi) return (ai > bi) ? 1 : -1;
+
+    ai = a[0]; bi = b[0];
+    if (ai != bi) return (ai > bi) ? 1 : -1;
+
+    return 0;
+
+#else
     for (int i = MP_N64 - 1; i >= 0; i--) {
         if (a[i] < b[i]) return -1;
         if (a[i] > b[i]) return  1;
     }
     return 0;
+#endif
 }
 
 bool mp_is_zero(const uint64_t *a) {
