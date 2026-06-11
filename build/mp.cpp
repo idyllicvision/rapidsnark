@@ -864,56 +864,99 @@ std::string mp_get_str(const uint64_t *a, uint32_t base) {
     mp_copy(v, a);
 
     if (base == 10u) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && MP_N64 == 4
         static constexpr uint64_t DEC_BASE = 10000000000000000000ULL; // 1e19
 
-        std::vector<uint64_t> chunks;
-        chunks.reserve((size_t)MP_N64 * 4u);
+        uint64_t q0[MP_N64];
+        uint64_t q1[MP_N64];
+        uint64_t q2[MP_N64];
+        uint64_t q3[MP_N64];
+        uint64_t q4[MP_N64];
+
+        uint64_t chunks[5];
+        size_t n_chunks = 0;
+
+        chunks[n_chunks++] = mp_div_u64_base(q0, v, DEC_BASE);
+
+        if (!mp_is_zero(q0)) {
+            chunks[n_chunks++] = mp_div_u64_base(q1, q0, DEC_BASE);
+
+            if (!mp_is_zero(q1)) {
+                chunks[n_chunks++] = mp_div_u64_base(q2, q1, DEC_BASE);
+
+                if (!mp_is_zero(q2)) {
+                    chunks[n_chunks++] = mp_div_u64_base(q3, q2, DEC_BASE);
+
+                    if (!mp_is_zero(q3)) {
+                        chunks[n_chunks++] = mp_div_u64_base(q4, q3, DEC_BASE);
+                    }
+                }
+            }
+        }
+
+        char buf[(size_t)MP_N64 * 20u + 1u];
+        char *end = buf + sizeof(buf);
+        char *p = end;
+
+        for (size_t i = 0; i + 1 < n_chunks; ++i) {
+            p = mp_write_dec_19_back(p, chunks[i]);
+        }
+
+        p = mp_write_dec_u64_back(p, chunks[n_chunks - 1]);
+
+        return std::string(p, (size_t)(end - p));
+#elif defined(__SIZEOF_INT128__)
+        static constexpr uint64_t DEC_BASE = 10000000000000000000ULL; // 1e19
+
+        uint64_t chunks[(size_t)MP_N64 * 4u];
+        size_t n_chunks = 0;
 
         while (!mp_is_zero(v)) {
             uint64_t q[MP_N64];
             const uint64_t rem = mp_div_u64_base(q, v, DEC_BASE);
 
-            chunks.push_back(rem);
+            chunks[n_chunks++] = rem;
             mp_copy(v, q);
         }
 
-        std::string out;
-        out.reserve((size_t)MP_N64 * 20u);
+        char buf[(size_t)MP_N64 * 20u + 1u];
+        char *end = buf + sizeof(buf);
+        char *p = end;
 
-        mp_append_dec_u64(out, chunks.back());
-
-        for (size_t i = chunks.size() - 1; i > 0; --i) {
-            mp_append_dec_padded_19(out, chunks[i - 1]);
+        for (size_t i = 0; i + 1 < n_chunks; ++i) {
+            p = mp_write_dec_19_back(p, chunks[i]);
         }
 
-        return out;
+        p = mp_write_dec_u64_back(p, chunks[n_chunks - 1]);
+
+        return std::string(p, (size_t)(end - p));
 #else
-        static constexpr uint32_t DEC_BASE = 1000000000u; // 1e9
+    static constexpr uint32_t DEC_BASE = 1000000000u; // 1e9
 
-        std::vector<uint32_t> chunks;
-        chunks.reserve((size_t)MP_N64 * 8u);
+    uint32_t chunks[(size_t)MP_N64 * 8u];
+    size_t n_chunks = 0;
 
-        while (!mp_is_zero(v)) {
-            uint64_t q[MP_N64];
-            const uint32_t rem = mp_div(q, v, DEC_BASE);
+    while (!mp_is_zero(v)) {
+        uint64_t q[MP_N64];
+        const uint32_t rem = mp_div(q, v, DEC_BASE);
 
-            chunks.push_back(rem);
-            mp_copy(v, q);
-        }
-
-        std::string out;
-        out.reserve((size_t)MP_N64 * 20u);
-
-        mp_append_dec_u64(out, chunks.back());
-
-        for (size_t i = chunks.size() - 1; i > 0; --i) {
-            mp_append_dec_padded_9(out, chunks[i - 1]);
-        }
-
-        return out;
-#endif
+        chunks[n_chunks++] = rem;
+        mp_copy(v, q);
     }
+
+    char buf[(size_t)MP_N64 * 20u + 1u];
+    char *end = buf + sizeof(buf);
+    char *p = end;
+
+    for (size_t i = 0; i + 1 < n_chunks; ++i) {
+        p = mp_write_dec_9_back(p, chunks[i]);
+    }
+
+    p = mp_write_dec_u64_back(p, chunks[n_chunks - 1]);
+
+    return std::string(p, (size_t)(end - p));
+#endif
+}
 
     std::string out;
 
@@ -1913,6 +1956,97 @@ static inline const MpMontCtx4 *mp_mont_get_known_ctx_4(const uint64_t *mod) {
     return nullptr;
 }
 
+
+static inline int mp_exp_popcount_4(const uint64_t *exp) {
+    return __builtin_popcountll(exp[0])
+         + __builtin_popcountll(exp[1])
+         + __builtin_popcountll(exp[2])
+         + __builtin_popcountll(exp[3]);
+}
+
+static inline void mp_pow_mod_mont_windowed_4(
+    uint64_t *r,
+    const uint64_t *base,
+    const uint64_t *exp,
+    const uint64_t *mod,
+    uint64_t n0inv,
+    const uint64_t *r2_mod,
+    int topBit,
+    int windowBits
+) {
+    // Supports windowBits 4 or 5. Table stores odd powers: 1,3,...,(2^w - 1).
+    uint64_t table[16][4];
+    const int tableSize = 1 << (windowBits - 1);
+
+    // table[0] = base^1 in Montgomery form.
+    mp_to_mont_4(table[0], base, r2_mod, mod, n0inv);
+
+    // b2 = base^2 in Montgomery form.
+    uint64_t b2[4];
+    mp_mont_mul_4(b2, table[0], table[0], mod, n0inv);
+
+    // table[i] = base^(2*i + 1) in Montgomery form.
+    for (int i = 1; i < tableSize; ++i) {
+        mp_mont_mul_4(table[i], table[i - 1], b2, mod, n0inv);
+    }
+
+    uint64_t one[4];
+    mp_set(one, 1u);
+
+    uint64_t acc[4];
+    mp_to_mont_4(acc, one, r2_mod, mod, n0inv);
+
+    for (int i = topBit; i >= 0;) {
+        const int limb = i / (2 * MP_N);
+        const int bit  = i % (2 * MP_N);
+
+        if (((exp[limb] >> bit) & 1ULL) == 0) {
+            uint64_t sq[4];
+            mp_mont_mul_4(sq, acc, acc, mod, n0inv);
+            mp_copy(acc, sq);
+            --i;
+            continue;
+        }
+
+        int width = std::min(windowBits, i + 1);
+        int low = i - width + 1;
+
+        // Keep the selected window odd by moving its low end to a set bit.
+        while (low < i) {
+            const int low_limb = low / (2 * MP_N);
+            const int low_bit  = low % (2 * MP_N);
+
+            if ((exp[low_limb] >> low_bit) & 1ULL) {
+                break;
+            }
+
+            ++low;
+            --width;
+        }
+
+        unsigned window = 0;
+        for (int j = i; j >= low; --j) {
+            const int j_limb = j / (2 * MP_N);
+            const int j_bit  = j % (2 * MP_N);
+            window = (window << 1) | (unsigned)((exp[j_limb] >> j_bit) & 1ULL);
+        }
+
+        for (int j = 0; j < width; ++j) {
+            uint64_t sq[4];
+            mp_mont_mul_4(sq, acc, acc, mod, n0inv);
+            mp_copy(acc, sq);
+        }
+
+        uint64_t tmp[4];
+        mp_mont_mul_4(tmp, acc, table[window >> 1], mod, n0inv);
+        mp_copy(acc, tmp);
+
+        i = low - 1;
+    }
+
+    mp_from_mont_4(r, acc, mod, n0inv);
+}
+
 #endif
 
 void mp_pow_mod(uint64_t *r, const uint64_t *base, const uint64_t *exp, const uint64_t *mod)
@@ -1975,6 +2109,18 @@ void mp_pow_mod(uint64_t *r, const uint64_t *base, const uint64_t *exp, const ui
             mp_mont_compute_r_r2_4(r_mod_local, r2_mod_local, mod);
 
             r2_mod_ptr = r2_mod_local;
+        }
+
+        const int popcnt = mp_exp_popcount_4(exp);
+
+        if (topBit >= 191 && popcnt >= 64) {
+            mp_pow_mod_mont_windowed_4(r, bcur, exp, mod, n0inv, r2_mod_ptr, topBit, 5);
+            return;
+        }
+
+        if (topBit >= 63 && popcnt >= 16) {
+            mp_pow_mod_mont_windowed_4(r, bcur, exp, mod, n0inv, r2_mod_ptr, topBit, 4);
+            return;
         }
 
         uint64_t b_mont[4];
@@ -2229,6 +2375,7 @@ uint64_t mp_addmul(uint64_t *r, const uint64_t *a, size_t n, uint64_t b)
 #endif
 }
 
+/*
 void mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b) {
 #if MP_N64 == 4
     r[0] = a[0] & b[0];
@@ -2272,6 +2419,7 @@ void mp_not(uint64_t *r, const uint64_t *a) {
     for (int i = 0; i < MP_N64; i++) r[i] = ~a[i];
 #endif
 }
+*/
 
 uint64_t mp_add(uint64_t *r, const uint64_t *a, size_t an, const uint64_t *b, size_t bn) {
 #if defined(__SIZEOF_INT128__)

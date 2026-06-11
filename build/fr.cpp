@@ -135,10 +135,8 @@ std::string RawFr::toString(const Element& a, uint32_t radix) {
 }
 
 void RawFr::inv(Element& r, const Element& a) {
-    Element t;
-    Fr_rawFromMontgomery(t.v, a.v);
-    mp_inv_mod(r.v, t.v, Fr_q.longVal);
-    Fr_rawMMul(r.v, r.v, Fr_R2.longVal);
+    mp_inv_mod(r.v, a.v, Fr_q.longVal);
+    Fr_rawMMul(r.v, r.v, Fr_R3.longVal);
 }
 
 void RawFr::div(Element& r, const Element& a, const Element& b) {

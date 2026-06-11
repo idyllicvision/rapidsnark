@@ -535,3 +535,134 @@ TEST(MPProfileNoGMP, MillionPointTiming) {
     std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
     SUCCEED();
 }
+
+TEST(MPProfileNoGMP, PowModExponentTiming) {
+    const size_t n = env_size("MP_POW_BENCH_N", 10000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 64);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    struct ExpCase {
+        const char *name;
+        uint64_t e[MP_N64];
+    };
+
+    const ExpCase cases[] = {
+        {"mp_pow_mod_exp17",        {17ULL, 0ULL, 0ULL, 0ULL}},
+        {"mp_pow_mod_exp65537",     {65537ULL, 0ULL, 0ULL, 0ULL}},
+        {"mp_pow_mod_sparse_256",   {1ULL, 0ULL, 0ULL, 0x8000000000000000ULL}},
+        {"mp_pow_mod_dense_128",    {~0ULL, ~0ULL, 0ULL, 0ULL}},
+        {"mp_pow_mod_dense_256",    {~0ULL, ~0ULL, ~0ULL, ~0ULL}},
+        {"mp_pow_mod_fq_q_minus_2", {
+            FQ_Q[0] - 2ULL,
+            FQ_Q[1],
+            FQ_Q[2],
+            FQ_Q[3]
+        }},
+    };
+
+    print_header();
+
+    for (const auto &tc : cases) {
+        print_stats("nogmp", run_bench(tc.name, n, block, [&](size_t i) -> uint64_t {
+            mp_uint_t r;
+            mp_uint_t e;
+            mp_copy(e, tc.e);
+            mp_pow_mod(r, d.a_mod[i].v, e, FQ_Q);
+            return digest_limbs(r);
+        }));
+    }
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}
+
+TEST(MPProfileNoGMP, PowModRandomBigTiming) {
+    const size_t n = env_size("MP_RANDOM_POW_BENCH_N", 1000000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 64);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    print_header();
+
+    print_stats("nogmp", run_bench("mp_pow_mod_random_big_256", n, block, [&](size_t i) -> uint64_t {
+        mp_uint_t r;
+        mp_uint_t e;
+
+        mp_copy(e, d.b[i].v);
+
+        // Force a real 256-bit exponent, not accidentally small.
+        e[3] |= 0x8000000000000000ULL;
+
+        mp_pow_mod(r, d.a_mod[i].v, e, FQ_Q);
+
+        return digest_limbs(r);
+    }));
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}
+
+static uint64_t mp_tune_digest_string_local(const std::string &s) {
+    uint64_t h = 1469598103934665603ULL;
+
+    for (unsigned char c : s) {
+        h ^= (uint64_t)c;
+        h *= 1099511628211ULL;
+    }
+
+    h ^= (uint64_t)s.size();
+    h *= 1099511628211ULL;
+
+    return h;
+}
+
+TEST(MPProfileNoGMP, StringBitwiseFocusTiming) {
+    const size_t n = env_size("MP_TUNE_BENCH_N", 1000000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 1024);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    print_header();
+
+    print_stats("nogmp", run_bench("mp_get_str_dec_focus", n, block, [&](size_t i) -> uint64_t {
+        std::string s = mp_get_str(d.a[i].v, 10);
+        return mp_tune_digest_string_local(s);
+    }));
+
+    print_stats("nogmp", run_bench("mp_and_focus", n, block, [&](size_t i) -> uint64_t {
+        mp_uint_t r;
+        mp_and(r, d.a[i].v, d.b[i].v);
+        return digest_limbs(r);
+    }));
+
+    print_stats("nogmp", run_bench("mp_or_focus", n, block, [&](size_t i) -> uint64_t {
+        mp_uint_t r;
+        mp_or(r, d.a[i].v, d.b[i].v);
+        return digest_limbs(r);
+    }));
+
+    print_stats("nogmp", run_bench("mp_xor_focus", n, block, [&](size_t i) -> uint64_t {
+        mp_uint_t r;
+        mp_xor(r, d.a[i].v, d.b[i].v);
+        return digest_limbs(r);
+    }));
+
+    print_stats("nogmp", run_bench("mp_not_focus", n, block, [&](size_t i) -> uint64_t {
+        mp_uint_t r;
+        mp_not(r, d.a[i].v);
+        return digest_limbs(r);
+    }));
+
+    print_stats("nogmp", run_bench("mp_tstbit_focus", n, block, [&](size_t i) -> uint64_t {
+        const size_t bit = (size_t)(d.b[i].v[0] & 255ULL);
+        const bool b = mp_tstbit(d.a[i].v, bit);
+
+        return b
+            ? 0x9e3779b97f4a7c15ULL ^ (uint64_t)bit
+            : 0xd1b54a32d192ed03ULL ^ (uint64_t)bit;
+    }));
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}

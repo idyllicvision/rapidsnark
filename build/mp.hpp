@@ -153,6 +153,50 @@ static inline void mp_shr(uint64_t *r, const uint64_t *a, uint64_t k) {
     }
 }
 
+static inline void mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b) {
+#if MP_N64 == 4
+    r[0] = a[0] & b[0];
+    r[1] = a[1] & b[1];
+    r[2] = a[2] & b[2];
+    r[3] = a[3] & b[3];
+#else
+    for (int i = 0; i < MP_N64; i++) r[i] = a[i] & b[i];
+#endif
+}
+
+static inline void mp_or(uint64_t *r, const uint64_t *a, const uint64_t *b) {
+#if MP_N64 == 4
+    r[0] = a[0] | b[0];
+    r[1] = a[1] | b[1];
+    r[2] = a[2] | b[2];
+    r[3] = a[3] | b[3];
+#else
+    for (int i = 0; i < MP_N64; i++) r[i] = a[i] | b[i];
+#endif
+}
+
+static inline void mp_xor(uint64_t *r, const uint64_t *a, const uint64_t *b) {
+#if MP_N64 == 4
+    r[0] = a[0] ^ b[0];
+    r[1] = a[1] ^ b[1];
+    r[2] = a[2] ^ b[2];
+    r[3] = a[3] ^ b[3];
+#else
+    for (int i = 0; i < MP_N64; i++) r[i] = a[i] ^ b[i];
+#endif
+}
+
+static inline void mp_not(uint64_t *r, const uint64_t *a) {
+#if MP_N64 == 4
+    r[0] = ~a[0];
+    r[1] = ~a[1];
+    r[2] = ~a[2];
+    r[3] = ~a[3];
+#else
+    for (int i = 0; i < MP_N64; i++) r[i] = ~a[i];
+#endif
+}
+
 void     mp_set(uint64_t *r, uint64_t a);
 //void     mp_copy(uint64_t *r, const uint64_t *a);
 
@@ -170,10 +214,10 @@ uint64_t mp_sub(uint64_t *r, const uint64_t *a, uint64_t b);
 uint64_t mp_mul(uint64_t *r, const uint64_t *a, uint64_t b);
 uint64_t mp_addmul(uint64_t *r, const uint64_t *a, size_t n, uint64_t b);
 
-void     mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b);
-void     mp_or(uint64_t *r, const uint64_t *a, const uint64_t *b);
-void     mp_xor(uint64_t *r, const uint64_t *a, const uint64_t *b);
-void     mp_not(uint64_t *r, const uint64_t *a);
+//void     mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b);
+//void     mp_or(uint64_t *r, const uint64_t *a, const uint64_t *b);
+//void     mp_xor(uint64_t *r, const uint64_t *a, const uint64_t *b);
+//void     mp_not(uint64_t *r, const uint64_t *a);
 
 bool     mp_tstbit(const uint64_t *a, size_t bit);
 //void     mp_shl(uint64_t *r, const uint64_t *a, uint64_t k);

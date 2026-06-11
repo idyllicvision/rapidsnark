@@ -727,3 +727,216 @@ TEST(MPProfileGMP, MillionPointTiming) {
     std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
     SUCCEED();
 }
+
+TEST(MPProfileGMP, PowModExponentTiming) {
+    const size_t n = env_size("MP_POW_BENCH_N", 10000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 64);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    struct ExpCase {
+        const char *name;
+        Limb e[MP_N64];
+    };
+
+    const ExpCase cases[] = {
+        {"mp_pow_mod_exp17",        {17ULL, 0ULL, 0ULL, 0ULL}},
+        {"mp_pow_mod_exp65537",     {65537ULL, 0ULL, 0ULL, 0ULL}},
+        {"mp_pow_mod_sparse_256",   {1ULL, 0ULL, 0ULL, static_cast<Limb>(0x8000000000000000ULL)}},
+        {"mp_pow_mod_dense_128",    {~static_cast<Limb>(0), ~static_cast<Limb>(0), 0ULL, 0ULL}},
+        {"mp_pow_mod_dense_256",    {~static_cast<Limb>(0), ~static_cast<Limb>(0), ~static_cast<Limb>(0), ~static_cast<Limb>(0)}},
+        {"mp_pow_mod_fq_q_minus_2", {
+            static_cast<Limb>(FQ_Q[0] - 2ULL),
+            FQ_Q[1],
+            FQ_Q[2],
+            FQ_Q[3]
+        }},
+    };
+
+    print_header();
+
+    for (const auto &tc : cases) {
+        print_stats("gmp", run_bench(tc.name, n, block, [&](size_t i) -> uint64_t {
+            Limb r[MP_N64];
+            gmp_pow_mod_u256(r, d.a_mod[i].v, tc.e, FQ_Q);
+            return digest_limbs(r);
+        }));
+    }
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}
+
+TEST(MPProfileGMP, PowModRandomBigTiming) {
+    const size_t n = env_size("MP_RANDOM_POW_BENCH_N", 1000000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 64);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    print_header();
+
+    print_stats("gmp", run_bench("mp_pow_mod_random_big_256", n, block, [&](size_t i) -> uint64_t {
+        Limb r[MP_N64];
+
+        Limb e[MP_N64] = {
+            d.b[i].v[0],
+            d.b[i].v[1],
+            d.b[i].v[2],
+            static_cast<Limb>(d.b[i].v[3] | 0x8000000000000000ULL)
+        };
+
+        gmp_pow_mod_u256(r, d.a_mod[i].v, e, FQ_Q);
+
+        return digest_limbs(r);
+    }));
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}
+
+static uint64_t mp_tune_digest_cstr_local(const char *s) {
+    uint64_t h = 1469598103934665603ULL;
+    size_t len = 0;
+
+    for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
+        h ^= (uint64_t)*p;
+        h *= 1099511628211ULL;
+        ++len;
+    }
+
+    h ^= (uint64_t)len;
+    h *= 1099511628211ULL;
+
+    return h;
+}
+
+static uint64_t mp_tune_digest_mpz_u256_local(const mpz_t z) {
+    uint64_t limbs[MP_N64] = {};
+
+    mpz_export(
+        limbs,
+        nullptr,
+        -1,
+        sizeof(uint64_t),
+        -1,
+        0,
+        z
+    );
+
+    return digest_limbs(limbs);
+}
+
+struct MpTuneGmpValue {
+    mpz_t z;
+
+    MpTuneGmpValue() {
+        mpz_init(z);
+    }
+
+    ~MpTuneGmpValue() {
+        mpz_clear(z);
+    }
+
+    MpTuneGmpValue(const MpTuneGmpValue &) = delete;
+    MpTuneGmpValue &operator=(const MpTuneGmpValue &) = delete;
+
+    MpTuneGmpValue(MpTuneGmpValue &&other) noexcept {
+        mpz_init(z);
+        mpz_swap(z, other.z);
+    }
+
+    MpTuneGmpValue &operator=(MpTuneGmpValue &&other) noexcept {
+        if (this != &other) {
+            mpz_swap(z, other.z);
+        }
+
+        return *this;
+    }
+};
+
+TEST(MPProfileGMP, StringBitwiseFocusTiming) {
+    const size_t n = env_size("MP_TUNE_BENCH_N", 1000000);
+    const size_t block = env_size("MP_BENCH_BLOCK", 1024);
+    const uint64_t seed = env_u64("MP_BENCH_SEED", 0xBADC0FFEE0DDF00DULL);
+    const Dataset d = make_dataset(n, seed);
+
+    std::vector<MpTuneGmpValue> a(n);
+    std::vector<MpTuneGmpValue> b(n);
+
+    for (size_t i = 0; i < n; ++i) {
+        mpz_import(
+            a[i].z,
+            MP_N64,
+            -1,
+            sizeof(uint64_t),
+            -1,
+            0,
+            d.a[i].v
+        );
+
+        mpz_import(
+            b[i].z,
+            MP_N64,
+            -1,
+            sizeof(uint64_t),
+            -1,
+            0,
+            d.b[i].v
+        );
+    }
+
+    mpz_t r;
+    mpz_init(r);
+
+    mpz_t mask;
+    mpz_init(mask);
+    mpz_set_ui(mask, 1);
+    mpz_mul_2exp(mask, mask, MP_N64 * 64u);
+    mpz_sub_ui(mask, mask, 1);
+
+    print_header();
+
+    print_stats("gmp", run_bench("mp_get_str_dec_focus", n, block, [&](size_t i) -> uint64_t {
+        char *s = mpz_get_str(nullptr, 10, a[i].z);
+        const uint64_t h = mp_tune_digest_cstr_local(s);
+        std::free(s);
+        return h;
+    }));
+
+    print_stats("gmp", run_bench("mp_and_focus", n, block, [&](size_t i) -> uint64_t {
+        mpz_and(r, a[i].z, b[i].z);
+        return mp_tune_digest_mpz_u256_local(r);
+    }));
+
+    print_stats("gmp", run_bench("mp_or_focus", n, block, [&](size_t i) -> uint64_t {
+        mpz_ior(r, a[i].z, b[i].z);
+        return mp_tune_digest_mpz_u256_local(r);
+    }));
+
+    print_stats("gmp", run_bench("mp_xor_focus", n, block, [&](size_t i) -> uint64_t {
+        mpz_xor(r, a[i].z, b[i].z);
+        return mp_tune_digest_mpz_u256_local(r);
+    }));
+
+    print_stats("gmp", run_bench("mp_not_focus", n, block, [&](size_t i) -> uint64_t {
+        // mpz_com is infinite two's-complement, not the same as fixed 256-bit mp_not.
+        // For fixed-width not: r = a XOR (2^256 - 1).
+        mpz_xor(r, a[i].z, mask);
+        return mp_tune_digest_mpz_u256_local(r);
+    }));
+
+    print_stats("gmp", run_bench("mp_tstbit_focus", n, block, [&](size_t i) -> uint64_t {
+        const size_t bit = (size_t)(d.b[i].v[0] & 255ULL);
+        const int v = mpz_tstbit(a[i].z, bit);
+
+        return v
+            ? 0x9e3779b97f4a7c15ULL ^ (uint64_t)bit
+            : 0xd1b54a32d192ed03ULL ^ (uint64_t)bit;
+    }));
+
+    mpz_clear(mask);
+    mpz_clear(r);
+
+    std::cerr << "g_sink=" << std::hex << g_sink << std::dec << "\n";
+    SUCCEED();
+}
