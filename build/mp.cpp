@@ -41,18 +41,7 @@ static inline uint64_t sub_borrow(uint64_t *out, uint64_t a, uint64_t b, uint64_
     return borrow1 | borrow2;
 #endif
 }
-/*
-void mp_zero(uint64_t *r) {
-#if MP_N64 == 4
-    r[0] = 0;
-    r[1] = 0;
-    r[2] = 0;
-    r[3] = 0;
-#else
-    std::memset(r, 0, MP_N64 * sizeof(uint64_t));
-#endif
-}
-*/
+
 void mp_set(uint64_t *r, uint64_t a) {
 #if MP_N64 == 4
     r[0] = a;
@@ -64,101 +53,7 @@ void mp_set(uint64_t *r, uint64_t a) {
     for (int i = 1; i < MP_N64; i++) r[i] = 0;
 #endif
 }
-/*
-void mp_copy(uint64_t *r, const uint64_t *a) {
-    if (r == a) return;
 
-#if MP_N64 == 4
-    const uintptr_t rp = reinterpret_cast<uintptr_t>(r);
-    const uintptr_t ap = reinterpret_cast<uintptr_t>(a);
-    static constexpr uintptr_t BYTES = MP_N64 * sizeof(uint64_t);
-
-    if (rp > ap && rp < ap + BYTES) {
-        r[3] = a[3];
-        r[2] = a[2];
-        r[1] = a[1];
-        r[0] = a[0];
-        return;
-    }
-
-    r[0] = a[0];
-    r[1] = a[1];
-    r[2] = a[2];
-    r[3] = a[3];
-#else
-    std::memmove(r, a, MP_N64 * sizeof(uint64_t));
-#endif
-}
-*/
-/*
-int mp_cmp(const uint64_t *a, const uint64_t *b) {
-#if MP_N64 == 4
-    uint64_t ai, bi;
-
-    ai = a[3]; bi = b[3];
-    if (ai != bi) return (ai > bi) ? 1 : -1;
-
-    ai = a[2]; bi = b[2];
-    if (ai != bi) return (ai > bi) ? 1 : -1;
-
-    ai = a[1]; bi = b[1];
-    if (ai != bi) return (ai > bi) ? 1 : -1;
-
-    ai = a[0]; bi = b[0];
-    if (ai != bi) return (ai > bi) ? 1 : -1;
-
-    return 0;
-
-#else
-    for (int i = MP_N64 - 1; i >= 0; i--) {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return  1;
-    }
-    return 0;
-#endif
-}
-*/
-/*
-int mp_cmp(const uint64_t *a, const uint64_t *b) {
-#if MP_N64 == 4
-    uint64_t ai;
-    uint64_t bi;
-
-    ai = a[3];
-    bi = b[3];
-    if (__builtin_expect(ai != bi, 1)) {
-        return (ai > bi) ? 1 : -1;
-    }
-
-    ai = a[2];
-    bi = b[2];
-    if (__builtin_expect(ai != bi, 0)) {
-        return (ai > bi) ? 1 : -1;
-    }
-
-    ai = a[1];
-    bi = b[1];
-    if (__builtin_expect(ai != bi, 0)) {
-        return (ai > bi) ? 1 : -1;
-    }
-
-    ai = a[0];
-    bi = b[0];
-    if (__builtin_expect(ai != bi, 0)) {
-        return (ai > bi) ? 1 : -1;
-    }
-
-    return 0;
-#else
-    for (int i = MP_N64 - 1; i >= 0; --i) {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return  1;
-    }
-
-    return 0;
-#endif
-}
-*/
 bool mp_is_zero(const uint64_t *a) {
 #if MP_N64 == 4
     return (a[0] | a[1] | a[2] | a[3]) == 0;
@@ -169,73 +64,7 @@ bool mp_is_zero(const uint64_t *a) {
     return acc == 0;
 #endif
 }
-/*
-void mp_shl(uint64_t *r, const uint64_t *a, uint64_t k) {
-    if (k >= (uint64_t)MP_N64 * 64u) {
-        mp_zero(r);
-        return;
-    }
-    if (k == 0) {
-        mp_copy(r, a);
-        return;
-    }
 
-    const auto wordShift = (uint32_t)(k >> 6);
-    const auto bitShift  = (uint32_t)(k & 63u);
-
-    if (bitShift == 0) {
-        for (int i = MP_N64 - 1; i >= 0; --i) {
-            int si = i - (int)wordShift;
-            r[i] = si >= 0 ? a[si] : 0;
-        }
-        return;
-    }
-
-    const uint32_t inv = 64u - bitShift;
-    for (int i = MP_N64 - 1; i >= 0; --i) {
-        int si0 = i - (int)wordShift;
-        int si1 = si0 - 1;
-
-        uint64_t lo = (si0 >= 0) ? a[si0] : 0;
-        uint64_t hi = (si1 >= 0) ? a[si1] : 0;
-
-        r[i] = lo << bitShift | hi >> inv;
-    }
-}
-
-void mp_shr(uint64_t *r, const uint64_t *a, uint64_t k) {
-    if (k >= (uint64_t)MP_N64 * 64u) {
-        mp_zero(r);
-        return;
-    }
-    if (k == 0) {
-        mp_copy(r, a);
-        return;
-    }
-
-    const auto wordShift = (uint32_t)(k >> 6);
-    const auto bitShift  = (uint32_t)(k & 63u);
-
-    if (bitShift == 0) {
-        for (uint32_t i = 0; i < MP_N64; ++i) {
-            uint32_t si = i + wordShift;
-            r[i] = (si < (uint32_t)MP_N64) ? a[si] : 0;
-        }
-        return;
-    }
-
-    const uint32_t inv = 64u - bitShift;
-    for (uint32_t i = 0; i < MP_N64; ++i) {
-        uint32_t si0 = i + wordShift;
-        uint32_t si1 = si0 + 1;
-
-        uint64_t lo = (si0 < (uint32_t)MP_N64) ? a[si0] : 0;
-        uint64_t hi = (si1 < (uint32_t)MP_N64) ? a[si1] : 0;
-
-        r[i] = lo >> bitShift | hi << inv;
-    }
-}
-*/
 uint64_t mp_add(uint64_t *r, const uint64_t *a, const uint64_t *b) {
 #if MP_N64 == 4
     uint64_t c = 0;
@@ -310,11 +139,6 @@ uint64_t mp_sub(uint64_t *r, const uint64_t *a, uint64_t b) {
 
     return br;
 #endif
-}
-
-bool mp_tstbit(const uint64_t *a, size_t bit) {
-    if (bit >= (size_t)MP_N64 * 64u) return false;
-    return a[bit >> 6] >> (bit & 63u) & 1ULL;
 }
 
 static inline uint64_t load_be64(const uint8_t *p) {
@@ -2267,25 +2091,81 @@ uint64_t mp_addmul(uint64_t *r, const uint64_t *a, size_t n, uint64_t b)
 #if MP_N64 == 4
     // mp_addmul(productX, pRawB, Fq_N64/Fr_N64=4, pRawA[i])
     if (n == 4) {
-        __uint128_t t;
+        const __uint128_t p0 = (__uint128_t)a[0] * b;
+        const __uint128_t p1 = (__uint128_t)a[1] * b;
+        const __uint128_t p2 = (__uint128_t)a[2] * b;
+        const __uint128_t p3 = (__uint128_t)a[3] * b;
 
-        t = (__uint128_t)r[0] + (__uint128_t)a[0] * (__uint128_t)b;
-        r[0] = (uint64_t)t;
-        t >>= 2*MP_N;
+        const uint64_t lo0 = (uint64_t)p0;
+        const uint64_t lo1 = (uint64_t)p1;
+        const uint64_t lo2 = (uint64_t)p2;
+        const uint64_t lo3 = (uint64_t)p3;
 
-        t += (__uint128_t)r[1] + (__uint128_t)a[1] * (__uint128_t)b;
-        r[1] = (uint64_t)t;
-        t >>= 2*MP_N;
+        uint64_t x0;
+        uint64_t x1;
+        uint64_t x2;
+        uint64_t x3;
 
-        t += (__uint128_t)r[2] + (__uint128_t)a[2] * (__uint128_t)b;
-        r[2] = (uint64_t)t;
-        t >>= 2*MP_N;
+        uint64_t c;
 
-        t += (__uint128_t)r[3] + (__uint128_t)a[3] * (__uint128_t)b;
-        r[3] = (uint64_t)t;
+        /*
+         * First carry-chain:
+         *
+         * r0 + lo0
+         * r1 + hi0
+         * r2 + hi1
+         * r3 + hi2
+         *      hi3
+         */
+        c = add_carry(
+            &x0,
+            r[0],
+            lo0,
+            0
+        );
 
-        return (uint64_t)(t >> 2*MP_N);
+        c = add_carry(
+            &x1,
+            r[1],
+            (uint64_t)(p0 >> 64),
+            c
+        );
 
+        c = add_carry(
+            &x2,
+            r[2],
+            (uint64_t)(p1 >> 64),
+            c
+        );
+
+        c = add_carry(
+            &x3,
+            r[3],
+            (uint64_t)(p2 >> 64),
+            c
+        );
+
+        uint64_t top = (uint64_t)(p3 >> 64) + c;
+
+         /*
+          * Second carry-chain:
+          *
+          * x1 + lo1
+          * x2 + lo2
+          * x3 + lo3
+          */
+        c = add_carry(&x1, x1, lo1, 0);
+        c = add_carry(&x2, x2, lo2, c);
+        c = add_carry(&x3, x3, lo3, c);
+
+        top += c;
+
+        r[0] = x0;
+        r[1] = x1;
+        r[2] = x2;
+        r[3] = x3;
+
+        return top;
     }
 
     if (n == 5 && a[4] == 0) {
@@ -2374,52 +2254,6 @@ uint64_t mp_addmul(uint64_t *r, const uint64_t *a, size_t n, uint64_t b)
     return carry;
 #endif
 }
-
-/*
-void mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b) {
-#if MP_N64 == 4
-    r[0] = a[0] & b[0];
-    r[1] = a[1] & b[1];
-    r[2] = a[2] & b[2];
-    r[3] = a[3] & b[3];
-#else
-    for (int i = 0; i < MP_N64; i++) r[i] = a[i] & b[i];
-#endif
-}
-
-void mp_or(uint64_t *r, const uint64_t *a, const uint64_t *b) {
-#if MP_N64 == 4
-    r[0] = a[0] | b[0];
-    r[1] = a[1] | b[1];
-    r[2] = a[2] | b[2];
-    r[3] = a[3] | b[3];
-#else
-    for (int i = 0; i < MP_N64; i++) r[i] = a[i] | b[i];
-#endif
-}
-
-void mp_xor(uint64_t *r, const uint64_t *a, const uint64_t *b) {
-#if MP_N64 == 4
-    r[0] = a[0] ^ b[0];
-    r[1] = a[1] ^ b[1];
-    r[2] = a[2] ^ b[2];
-    r[3] = a[3] ^ b[3];
-#else
-    for (int i = 0; i < MP_N64; i++) r[i] = a[i] ^ b[i];
-#endif
-}
-
-void mp_not(uint64_t *r, const uint64_t *a) {
-#if MP_N64 == 4
-    r[0] = ~a[0];
-    r[1] = ~a[1];
-    r[2] = ~a[2];
-    r[3] = ~a[3];
-#else
-    for (int i = 0; i < MP_N64; i++) r[i] = ~a[i];
-#endif
-}
-*/
 
 uint64_t mp_add(uint64_t *r, const uint64_t *a, size_t an, const uint64_t *b, size_t bn) {
 #if defined(__SIZEOF_INT128__)

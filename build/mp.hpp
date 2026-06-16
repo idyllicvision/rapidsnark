@@ -197,11 +197,12 @@ static inline void mp_not(uint64_t *r, const uint64_t *a) {
 #endif
 }
 
-void     mp_set(uint64_t *r, uint64_t a);
-//void     mp_copy(uint64_t *r, const uint64_t *a);
+static inline bool mp_tstbit(const uint64_t *a, size_t bit) {
+    if (bit >= (size_t)MP_N64 * 64u) return false;
+    return a[bit >> 6] >> (bit & 63u) & 1ULL;
+}
 
-//int      mp_cmp(const uint64_t *a, const uint64_t *b);
-//void     mp_zero(uint64_t *r);
+void     mp_set(uint64_t *r, uint64_t a);
 bool     mp_is_zero(const uint64_t *a);
 
 uint64_t mp_add(uint64_t *r, const uint64_t *a, const uint64_t *b);
@@ -213,15 +214,6 @@ uint64_t mp_sub(uint64_t *r, const uint64_t *a, uint64_t b);
 
 uint64_t mp_mul(uint64_t *r, const uint64_t *a, uint64_t b);
 uint64_t mp_addmul(uint64_t *r, const uint64_t *a, size_t n, uint64_t b);
-
-//void     mp_and(uint64_t *r, const uint64_t *a, const uint64_t *b);
-//void     mp_or(uint64_t *r, const uint64_t *a, const uint64_t *b);
-//void     mp_xor(uint64_t *r, const uint64_t *a, const uint64_t *b);
-//void     mp_not(uint64_t *r, const uint64_t *a);
-
-bool     mp_tstbit(const uint64_t *a, size_t bit);
-//void     mp_shl(uint64_t *r, const uint64_t *a, uint64_t k);
-//void     mp_shr(uint64_t *r, const uint64_t *a, uint64_t k);
 
 int32_t     mp_get_int32(const mp_uint_t a);
 bool        mp_fits_int32(const uint64_t *a);
