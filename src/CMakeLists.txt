@@ -150,6 +150,7 @@ if(BUILD_TESTS)
             /opt/homebrew/lib/libgtest.a
     )
     add_test(NAME mp_test COMMAND mp_test)
+    endif ()
 
     add_executable(test_public_size test_public_size.c)
     target_link_libraries(test_public_size rapidsnarkStaticFrFq mp pthread)
