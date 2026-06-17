@@ -1,158 +1,86 @@
 #include "fq.hpp"
-#include <stdio.h>
-#include <stdlib.h>
-#include <gmp.h>
+#include "mp.hpp"
+#include <cstring>
 #include <string>
 #include <stdexcept>
+#include <climits>
 
-
-static mpz_t q;
-static mpz_t zero;
-static mpz_t one;
-static mpz_t mask;
-static size_t nBits;
-static bool initialized = false;
-
-void Fq_toMpz(mpz_t r, PFqElement pE) {
+void Fq_toMP(mp_uint_t out, PFqElement pE) {
     FqElement tmp;
     Fq_toNormal(&tmp, pE);
+
     if (!(tmp.type & Fq_LONG)) {
-        mpz_set_si(r, tmp.shortVal);
-        if (tmp.shortVal<0) {
-            mpz_add(r, r, q);
-        }
+        mp_set_mod(out, tmp.shortVal, Fq_q.longVal);
     } else {
-        mpz_import(r, Fq_N64, -1, 8, -1, 0, (const void *)tmp.longVal);
+        mp_copy(out, tmp.longVal);
     }
 }
 
-void Fq_fromMpz(PFqElement pE, mpz_t v) {
-    if (mpz_fits_sint_p(v)) {
+void Fq_fromMP(PFqElement pE, const mp_uint_t v) {
+    if (mp_fits_int32(v)) {
         pE->type = Fq_SHORT;
-        pE->shortVal = mpz_get_si(v);
+        pE->shortVal = mp_get_int32(v);
     } else {
         pE->type = Fq_LONG;
-        for (int i=0; i<Fq_N64; i++) pE->longVal[i] = 0;
-        mpz_export((void *)(pE->longVal), NULL, -1, 8, -1, 0, v);
+        mp_copy(pE->longVal, v);
     }
-}
-
-
-bool Fq_init() {
-    if (initialized) return false;
-    initialized = true;
-    mpz_init(q);
-    mpz_import(q, Fq_N64, -1, 8, -1, 0, (const void *)Fq_q.longVal);
-    mpz_init_set_ui(zero, 0);
-    mpz_init_set_ui(one, 1);
-    nBits = mpz_sizeinbase (q, 2);
-    mpz_init(mask);
-    mpz_mul_2exp(mask, one, nBits);
-    mpz_sub(mask, mask, one);
-    return true;
 }
 
 void Fq_str2element(PFqElement pE, char const *s, uint base) {
-    mpz_t mr;
-    mpz_init_set_str(mr, s, base);
-    mpz_fdiv_r(mr, mr, q);
-    Fq_fromMpz(pE, mr);
-    mpz_clear(mr);
+    mp_uint_t v;
+    if (!mp_set_mod(v, s, base, Fq_q.longVal)) {
+        mp_set(v, 0);
+    }
+    Fq_fromMP(pE, v);
 }
 
-char *Fq_element2str(PFqElement pE) {
-    FqElement tmp;
-    mpz_t r;
-    if (!(pE->type & Fq_LONG)) {
-        if (pE->shortVal>=0) {
-            char *r = new char[32];
-            sprintf(r, "%d", pE->shortVal);
-            return r;
-        } else {
-            mpz_init_set_si(r, pE->shortVal);
-            mpz_add(r, r, q);
-        }
-    } else {
-        Fq_toNormal(&tmp, pE);
-        mpz_init(r);
-        mpz_import(r, Fq_N64, -1, 8, -1, 0, (const void *)tmp.longVal);
-    }
-    char *res = mpz_get_str (0, 10, r);
-    mpz_clear(r);
-    return res;
+std::string Fq_element2str(PFqElement pE, uint32_t base) {
+    mp_uint_t v;
+    Fq_toMP(v, pE);
+    return mp_get_str(v, base);
 }
 
 void Fq_idiv(PFqElement r, PFqElement a, PFqElement b) {
-    mpz_t ma;
-    mpz_t mb;
-    mpz_t mr;
-    mpz_init(ma);
-    mpz_init(mb);
-    mpz_init(mr);
+    mp_uint_t ma, mb;
+    Fq_toMP(ma, a);
+    Fq_toMP(mb, b);
 
-    Fq_toMpz(ma, a);
-    // char *s1 = mpz_get_str (0, 10, ma);
-    // printf("s1 %s\n", s1);
-    Fq_toMpz(mb, b);
-    // char *s2 = mpz_get_str (0, 10, mb);
-    // printf("s2 %s\n", s2);
-    mpz_fdiv_q(mr, ma, mb);
-    // char *sr = mpz_get_str (0, 10, mr);
-    // printf("r %s\n", sr);
-    Fq_fromMpz(r, mr);
-
-    mpz_clear(ma);
-    mpz_clear(mb);
-    mpz_clear(mr);
+    mp_uint_t q, rem;
+    mp_div(q, rem, ma, mb);
+    Fq_fromMP(r, q);
 }
 
 void Fq_mod(PFqElement r, PFqElement a, PFqElement b) {
-    mpz_t ma;
-    mpz_t mb;
-    mpz_t mr;
-    mpz_init(ma);
-    mpz_init(mb);
-    mpz_init(mr);
+    mp_uint_t ma, mb;
+    Fq_toMP(ma, a);
+    Fq_toMP(mb, b);
 
-    Fq_toMpz(ma, a);
-    Fq_toMpz(mb, b);
-    mpz_fdiv_r(mr, ma, mb);
-    Fq_fromMpz(r, mr);
-
-    mpz_clear(ma);
-    mpz_clear(mb);
-    mpz_clear(mr);
+    mp_uint_t q, rem;
+    mp_div(q, rem, ma, mb);
+    Fq_fromMP(r, rem);
 }
 
 void Fq_pow(PFqElement r, PFqElement a, PFqElement b) {
-    mpz_t ma;
-    mpz_t mb;
-    mpz_t mr;
-    mpz_init(ma);
-    mpz_init(mb);
-    mpz_init(mr);
+    mp_uint_t mb;
+    Fq_toMP(mb, b);
 
-    Fq_toMpz(ma, a);
-    Fq_toMpz(mb, b);
-    mpz_powm(mr, ma, mb, q);
-    Fq_fromMpz(r, mr);
+    mp_uint_t base;
+    Fq_toMP(base, a);
 
-    mpz_clear(ma);
-    mpz_clear(mb);
-    mpz_clear(mr);
+    mp_uint_t res;
+    mp_pow_mod(res, base, mb, Fq_q.longVal);
+
+    Fq_fromMP(r, res);
 }
 
 void Fq_inv(PFqElement r, PFqElement a) {
-    mpz_t ma;
-    mpz_t mr;
-    mpz_init(ma);
-    mpz_init(mr);
+    mp_uint_t base;
+    Fq_toMP(base, a);
 
-    Fq_toMpz(ma, a);
-    mpz_invert(mr, ma, q);
-    Fq_fromMpz(r, mr);
-    mpz_clear(ma);
-    mpz_clear(mr);
+    mp_uint_t res;
+    mp_inv_mod(res, base, Fq_q.longVal);
+
+    Fq_fromMP(r, res);
 }
 
 void Fq_div(PFqElement r, PFqElement a, PFqElement b) {
@@ -165,110 +93,75 @@ void Fq_fail() {
     throw std::runtime_error("Fq error");
 }
 
-void Fq_longErr()
-{
+void Fq_longErr() {
     Fq_fail();
 }
 
 RawFq::RawFq() {
-    Fq_init();
     set(fZero, 0);
     set(fOne, 1);
     neg(fNegOne, fOne);
 }
 
-RawFq::~RawFq() {
+RawFq::~RawFq() {}
+
+void RawFq::fromString(Element& r, const std::string& s, uint32_t radix) {
+    if (!mp_set_mod(r.v, s.c_str(), radix, Fq_q.longVal)) {
+        mp_set(r.v, 0);
+    }
+    Fq_rawToMontgomery(r.v, r.v);
 }
 
-void RawFq::fromString(Element &r, const std::string &s, uint32_t radix) {
-    mpz_t mr;
-    mpz_init_set_str(mr, s.c_str(), radix);
-    mpz_fdiv_r(mr, mr, q);
-    for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
-    mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-    Fq_rawToMontgomery(r.v,r.v);
-    mpz_clear(mr);
-}
-
-void RawFq::fromUI(Element &r, unsigned long int v) {
-    mpz_t mr;
-    mpz_init(mr);
-    mpz_set_ui(mr, v);
-    for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
-    mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-    Fq_rawToMontgomery(r.v,r.v);
-    mpz_clear(mr);
+void RawFq::fromUI(Element& r, unsigned long int v) {
+    mp_set(r.v, v);
+    Fq_rawToMontgomery(r.v, r.v);
 }
 
 RawFq::Element RawFq::set(int value) {
-  Element r;
-  set(r, value);
-  return r;
+    Element r;
+    set(r, value);
+    return r;
 }
 
-void RawFq::set(Element &r, int value) {
-  mpz_t mr;
-  mpz_init(mr);
-  mpz_set_si(mr, value);
-  if (value < 0) {
-      mpz_add(mr, mr, q);
-  }
-
-  mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-
-  for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
-  mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-  Fq_rawToMontgomery(r.v,r.v);
-  mpz_clear(mr);
+void RawFq::set(Element& r, int value) {
+    mp_set_mod(r.v, value, Fq_q.longVal);
+    Fq_rawToMontgomery(r.v, r.v);
 }
 
-std::string RawFq::toString(const Element &a, uint32_t radix) {
+std::string RawFq::toString(const Element& a, uint32_t radix) {
     Element tmp;
-    mpz_t r;
     Fq_rawFromMontgomery(tmp.v, a.v);
-    mpz_init(r);
-    mpz_import(r, Fq_N64, -1, 8, -1, 0, (const void *)(tmp.v));
-    char *res = mpz_get_str (0, radix, r);
-    mpz_clear(r);
-    std::string resS(res);
-    free(res);
-    return resS;
+    return mp_get_str(tmp.v, radix);
 }
 
-void RawFq::inv(Element &r, const Element &a) {
-    mpz_t mr;
-    mpz_init(mr);
-    mpz_import(mr, Fq_N64, -1, 8, -1, 0, (const void *)(a.v));
-    mpz_invert(mr, mr, q);
-
-
-    for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
-    mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-
-    Fq_rawMMul(r.v, r.v,Fq_R3.longVal);
-    mpz_clear(mr);
+void RawFq::inv(Element& r, const Element& a) {
+    Element t;
+    Fq_rawFromMontgomery(t.v, a.v);
+    mp_inv_mod(r.v, t.v, Fq_q.longVal);
+    Fq_rawMMul(r.v, r.v, Fq_R2.longVal);
 }
 
-void RawFq::div(Element &r, const Element &a, const Element &b) {
+void RawFq::div(Element& r, const Element& a, const Element& b) {
     Element tmp;
     inv(tmp, b);
     mul(r, a, tmp);
 }
 
-#define BIT_IS_SET(s, p) (s[p>>3] & (1 << (p & 0x7)))
-void RawFq::exp(Element &r, const Element &base, uint8_t* scalar, unsigned int scalarSize) {
+#define BIT_IS_SET(s, p) (s[(p)>>3] & (1 << ((p) & 0x7)))
+void RawFq::exp(Element& r, const Element& base, uint8_t* scalar, unsigned int scalarSize) {
     bool oneFound = false;
     Element copyBase;
     copy(copyBase, base);
-    for (int i=scalarSize*8-1; i>=0; i--) {
+
+    for (int i = (int)scalarSize * 8 - 1; i >= 0; i--) {
         if (!oneFound) {
-            if ( !BIT_IS_SET(scalar, i) ) continue;
+            if (!BIT_IS_SET(scalar, i)) continue;
             copy(r, copyBase);
             oneFound = true;
             continue;
         }
         square(r, r);
-        if ( BIT_IS_SET(scalar, i) ) {
+        if (BIT_IS_SET(scalar, i)) {
             mul(r, r, copyBase);
         }
     }
@@ -277,47 +170,37 @@ void RawFq::exp(Element &r, const Element &base, uint8_t* scalar, unsigned int s
     }
 }
 
-void RawFq::toMpz(mpz_t r, const Element &a) {
-    Element tmp;
-    Fq_rawFromMontgomery(tmp.v, a.v);
-    mpz_import(r, Fq_N64, -1, 8, -1, 0, (const void *)tmp.v);
+void RawFq::toMP(mp_uint_t r, const Element &a) {
+    FqRawElement tmp;
+    Fq_rawFromMontgomery(tmp, a.v);
+    mp_copy(r, tmp);
 }
 
-void RawFq::fromMpz(Element &r, const mpz_t a) {
-    for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
-    mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, a);
-    Fq_rawToMontgomery(r.v, r.v);
+void RawFq::fromMP(Element &a, const mp_uint_t r) {
+    mp_copy(a.v, r);
+    Fq_rawToMontgomery(a.v, a.v);
 }
 
-int RawFq::toRprBE(const Element &element, uint8_t *data, int bytes)
-{
-    if (bytes < Fq_N64 * 8) {
-      return -(Fq_N64 * 8);
-    }
+int RawFq::toRprBE(const Element& element, uint8_t* data, int bytes) {
+    const int need = Fq_N64 * 8;
+    if (bytes < need) return -need;
 
-    mpz_t r;
-    mpz_init(r);
+    mp_uint_t v;
+    toMP(v, element);
+    mp_export_be(data, v);
 
-    toMpz(r, element);
-
-    mpz_export(data, NULL, 1, 8, 1, 0, r);
-
-    return Fq_N64 * 8;
+    return need;
 }
 
-int RawFq::fromRprBE(Element &element, const uint8_t *data, int bytes)
-{
-    if (bytes < Fq_N64 * 8) {
-      return -(Fq_N64* 8);
-    }
-    mpz_t r;
-    mpz_init(r);
+int RawFq::fromRprBE(Element& element, const uint8_t* data, int bytes) {
+    const int need = Fq_N64 * 8;
+    if (bytes < need) return -need;
 
-    mpz_import(r, Fq_N64 * 8, 0, 1, 0, 0, data);
-    fromMpz(element, r);
-    return Fq_N64 * 8;
+    mp_uint_t v;
+    mp_import_be(v, data);
+    fromMP(element, v);
+
+    return need;
 }
-
-static bool init = Fq_init();
 
 RawFq RawFq::field;

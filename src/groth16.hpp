@@ -3,10 +3,12 @@
 
 #include <string>
 #include <array>
+#include "fft.hpp"
+
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
-#include "fft.hpp"
+class ProverCache;
 
 namespace Groth16 {
 
@@ -112,7 +114,20 @@ namespace Groth16 {
             delete fft;
         }
 
-        std::unique_ptr<Proof<Engine>> prove(typename Engine::FrElement *wtns);
+        std::unique_ptr<Proof<Engine>> prove(typename Engine::FrElement *wtns, ProverCache &cache);
+
+    private:
+        void computeCoefs(typename Engine::FrElement *a, typename Engine::FrElement *wtns);
+        void computeH(typename Engine::G1Point &pih, typename Engine::FrElement *wtns);
+
+        template <typename Curve>
+        void computeMsm(Curve                       &g,
+                        typename Curve::Point       &result,
+                        typename Curve::PointAffine *bases,
+                        typename Engine::FrElement  *scalars,
+                        u_int32_t                    nPoints,
+                        const std::string           &pointName,
+                        const std::string           &varName);
     };
 
     template <typename Engine>

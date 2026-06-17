@@ -1,8 +1,8 @@
-#include <gmp.h>
 #include <string>
 #include <cstring>
 #include <cstdarg>
 #include <stdexcept>
+#include <climits>
 #include <alt_bn128.hpp>
 #include <nlohmann/json.hpp>
 #include "prover.h"
@@ -11,9 +11,9 @@
 #include "wtns_utils.hpp"
 #include "binfile_utils.hpp"
 #include "fileloader.hpp"
+#include "prover_cache.h"
 
 using json = nlohmann::json;
-
 
 class InvalidWitnessLengthException : public std::invalid_argument
 {
@@ -67,18 +67,22 @@ PublicBufferMinSize(unsigned long long count)
 }
 
 static bool
-PrimeIsValid(mpz_srcptr prime)
+PrimeIsValid(const std::vector<uint8_t> &prime_le)
 {
-    mpz_t altBbn128r;
+    static constexpr uint8_t kAltBn128rLE[32] = {
+        0x01, 0x00, 0x00, 0xF0, 0x93, 0xF5, 0xE1, 0x43,
+        0x91, 0x70, 0xB9, 0x79, 0x48, 0xE8, 0x33, 0x28,
+        0x5D, 0x58, 0x81, 0x81, 0xB6, 0x45, 0x50, 0xB8,
+        0x29, 0xA0, 0x31, 0xE1, 0x72, 0x4E, 0x64, 0x30
+    };
 
-    mpz_init(altBbn128r);
-    mpz_set_str(altBbn128r, "21888242871839275222246405745257275088548364400416034343698204186575808495617", 10);
+    if (prime_le.size() < 32) return false;
 
-    const bool is_valid = (mpz_cmp(prime, altBbn128r) == 0);
+    for (size_t i = 32; i < prime_le.size(); i++) {
+        if (prime_le[i] != 0) return false;
+    }
 
-    mpz_clear(altBbn128r);
-
-    return is_valid;
+    return std::memcmp(prime_le.data(), kAltBn128rLE, 32) == 0;
 }
 
 static std::string
@@ -99,13 +103,16 @@ class Groth16Prover
     BinFileUtils::BinFile zkey;
     std::unique_ptr<ZKeyUtils::Header> zkeyHeader;
     std::unique_ptr<Groth16::Prover<AltBn128::Engine>> prover;
+    ProverCache cache;
 
 public:
     Groth16Prover(const void         *zkey_buffer,
-                  unsigned long long  zkey_size)
+                  unsigned long long  zkey_size,
+                  const char         *cache_file_path)
 
         : zkey(zkey_buffer, zkey_size, "zkey", 1),
-          zkeyHeader(ZKeyUtils::loadHeader(&zkey))
+          zkeyHeader(ZKeyUtils::loadHeader(&zkey)),
+          cache(cache_file_path)
     {
         if (!PrimeIsValid(zkeyHeader->rPrime)) {
             throw std::invalid_argument("zkey curve not supported");
@@ -151,7 +158,11 @@ public:
 
         AltBn128::FrElement *wtnsData = (AltBn128::FrElement *)wtns.getSectionData(2);
 
-        auto proof = prover->prove(wtnsData);
+        if (!cache.isLoaded()) {
+            cache.load();
+        }
+
+        auto proof = prover->prove(wtnsData, cache);
 
         stringProof = proof->toJson().dump();
         stringPublic = BuildPublicString(wtnsData, zkeyHeader->nPublic);
@@ -221,6 +232,7 @@ groth16_prover_create(
     void                **prover_object,
     const void          *zkey_buffer,
     unsigned long long   zkey_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -233,7 +245,11 @@ groth16_prover_create(
             throw std::invalid_argument("Null zkey buffer");
         }
 
-        Groth16Prover *prover = new Groth16Prover(zkey_buffer, zkey_size);
+        if (cache_file_path == NULL) {
+            cache_file_path = "";
+        }
+
+        Groth16Prover *prover = new Groth16Prover(zkey_buffer, zkey_size, cache_file_path);
 
         *prover_object = prover;
 
@@ -258,6 +274,7 @@ int
 groth16_prover_create_zkey_file(
     void                **prover_object,
     const char          *zkey_file_path,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -275,6 +292,7 @@ groth16_prover_create_zkey_file(
                 prover_object,
                 fileLoader.dataBuffer(),
                 fileLoader.dataSize(),
+                cache_file_path,
                 error_msg,
                 error_msg_maxsize);
 }
@@ -384,7 +402,6 @@ groth16_prover_destroy(void *prover_object)
 {
     if (prover_object != NULL) {
         Groth16Prover *prover = static_cast<Groth16Prover*>(prover_object);
-
         delete prover;
     }
 }
@@ -399,6 +416,7 @@ groth16_prover(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -408,6 +426,7 @@ groth16_prover(
                     &prover,
                     zkey_buffer,
                     zkey_size,
+                    cache_file_path,
                     error_msg,
                     error_msg_maxsize);
 
@@ -440,6 +459,7 @@ groth16_prover_zkey_file(
     unsigned long long  *proof_size,
     char                *public_buffer,
     unsigned long long  *public_size,
+    const char          *cache_file_path,
     char                *error_msg,
     unsigned long long   error_msg_maxsize)
 {
@@ -462,6 +482,7 @@ groth16_prover_zkey_file(
             proof_size,
             public_buffer,
             public_size,
+            cache_file_path,
             error_msg,
             error_msg_maxsize);
 }
