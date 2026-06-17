@@ -2,9 +2,8 @@
 #define __FR_H
 
 #include "fr_element.hpp"
-#include <cstdint>
+#include "mp.hpp"
 #include <string>
-#include <gmp.h>
 
 #ifdef __APPLE__
 #include <sys/types.h> // typedef unsigned int uint;
@@ -13,8 +12,6 @@
 extern FrElement Fr_q;
 extern FrElement Fr_R2;
 extern FrElement Fr_R3;
-extern FrRawElement Fr_rawq;
-extern FrRawElement Fr_rawR3;
 
 #ifdef USE_ASM
 
@@ -193,10 +190,11 @@ void Fr_longErr();
 
 #endif
 
-// Pending functions to convert
 
+void Fr_toMP(mp_uint_t out, PFrElement a);
+void Fr_fromMP(PFrElement out, const mp_uint_t v);
 void Fr_str2element(PFrElement pE, char const*s, uint base);
-char *Fr_element2str(PFrElement pE);
+std::string Fr_element2str(PFrElement pE, uint32_t base = 10);
 void Fr_idiv(PFrElement r, PFrElement a, PFrElement b);
 void Fr_mod(PFrElement r, PFrElement a, PFrElement b);
 void Fr_inv(PFrElement r, PFrElement a);
@@ -204,11 +202,9 @@ void Fr_div(PFrElement r, PFrElement a, PFrElement b);
 void Fr_pow(PFrElement r, PFrElement a, PFrElement b);
 
 class RawFr {
-
 public:
     const static int N64 = Fr_N64;
     const static int MaxBits = 254;
-
 
     struct Element {
         FrRawElement v;
@@ -220,7 +216,6 @@ private:
     Element fNegOne;
 
 public:
-
     RawFr();
     ~RawFr();
 
@@ -266,8 +261,8 @@ public:
     int inline eq(const Element &a, const Element &b) { return Fr_rawIsEq(a.v, b.v); };
     int inline isZero(const Element &a) { return Fr_rawIsZero(a.v); };
 
-    void toMpz(mpz_t r, const Element &a);
-    void fromMpz(Element &a, const mpz_t r);
+    void toMP(mp_uint_t r, const Element &a);
+    void fromMP(Element &a, const mp_uint_t r);
 
     int toRprBE(const Element &element, uint8_t *data, int bytes);
     int fromRprBE(Element &element, const uint8_t *data, int bytes);
@@ -277,9 +272,7 @@ public:
     void fromUI(Element &r, unsigned long int v);
 
     static RawFr field;
-
 };
-
 
 #endif // __FR_H
 
