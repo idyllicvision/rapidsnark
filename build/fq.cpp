@@ -135,10 +135,8 @@ std::string RawFq::toString(const Element& a, uint32_t radix) {
 }
 
 void RawFq::inv(Element& r, const Element& a) {
-    Element t;
-    Fq_rawFromMontgomery(t.v, a.v);
-    mp_inv_mod(r.v, t.v, Fq_q.longVal);
-    Fq_rawMMul(r.v, r.v, Fq_R2.longVal);
+    mp_inv_mod(r.v, a.v, Fq_q.longVal);
+    Fq_rawMMul(r.v, r.v, Fq_R3.longVal);
 }
 
 void RawFq::div(Element& r, const Element& a, const Element& b) {
